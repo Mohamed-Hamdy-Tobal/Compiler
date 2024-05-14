@@ -28,6 +28,7 @@ def lexer(file_path):
     tokens = []
     with open(file_path, 'r') as file:
         for line_number, line in enumerate(file, 1):  # For Every Line
+            line_tokens = []
             line = line.strip()  # Remove leading and trailing whitespace
             while line: #  iterates over the line until it is empty.
                 match = None
@@ -35,12 +36,13 @@ def lexer(file_path):
                     regex_match = token_regex.match(line)
                     if regex_match:
                         match = (token_name, regex_match.group(0))  #  If a match is found, it assigns a tuple to match containing the token name (token_name) and the matched string 
-                        line = line[regex_match.end():]  #  Updates the line variable by removing the matched portion from the beginning. 
+                        if token_name != "WHITESPACE":
+                            line_tokens.append((match[0], match[1], f"Line : {line_number}"))
+                        line = line[regex_match.end():]
                         break
                 if not match:
                     raise ValueError(f'Invalid token at line {line_number}: {line}')
-                if match[0] != 'WHITESPACE':
-                    tokens.append((match[0], match[1], line_number))  # Valid tokens are appended to the tokens list along with their type and line number.
+            tokens.append(line_tokens)
     return tokens
 
 # Test the lexer
@@ -48,9 +50,11 @@ if __name__ == "__main__":
     file_path = "text.txt"
     try:
         tokens = lexer(file_path)
-        print("Tokens:")
-        for token in tokens:
-            print(token)
+        print(" ## Tokens : ##")
+        for i, line_token in enumerate(tokens, 1):
+            print(f"\nTokens For Line {i} Are :")
+            for token in line_token:
+                print(token)
         print("\n- Number of Tokens:", len(tokens))
     except FileNotFoundError:
         print(f"File '{file_path}' not found.")

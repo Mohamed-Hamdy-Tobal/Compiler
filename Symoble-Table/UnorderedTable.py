@@ -15,35 +15,47 @@ TOKEN_TYPES = [
 ]
 
 
-def tokenize(src) -> list:
+TOKEN_REGEX = [(name, re.compile(pattern)) for name, pattern in TOKEN_TYPES]
+
+def lexer(file_path):
     tokens = []
-    while src:
-        for token_type, pattern in TOKEN_TYPES:
-            match = re.match(pattern, src)
-            if match:
-                token_value = match.group(0)
-                if token_type != "WHITESPACE":
-                    tokens.append((token_type, token_value))
-                src = src[match.end() :]
-                break
-        else:
-            raise Exception("Invalid character: " + src[0])
+    with open(file_path, 'r') as file:
+        for line_number, line in enumerate(file, 1):
+            line_token = []
+            line = line.strip()
+            while line:
+                match = None
+                for token_name, token_regex in TOKEN_REGEX:
+                    regex_match = token_regex.match(line)
+                    if regex_match:
+                        match = (token_name, regex_match.group(0))
+                        if match[0] != "WHITESPACE":
+                            line_token.append(match)
+                            # line_token.append((match[0], match[1], f"In -> {line_number}"))
+                        line = line[regex_match.end() :]
+                        break
+                if not match:
+                    raise ValueError("Error")
+            tokens.append(line_token)
     return tokens
 
 
-class UnorderedTable:
-    def __init__(self) -> None:
-        self.table = {}
+class OrderedTable:
+    def __init__(self):
+        self.table = []
 
     def insert(self, name, datatype, line_declare):
-        if name not in self.table:
-            self.table[name] = (len(self.table) + 1, datatype, line_declare)
+        self.table.append((name, datatype, line_declare))
 
-    # checks if the variable name matches the given name.
-    # If a match is found, it returns True, indicating that the variable exists in the table.
-    # If no match is found after checking all entries, it returns False, indicating that the variable is not present in the table.
-    def look_up(self, name):
-        return name in self.table
+    def lookup(self, name):
+        for i in self.table:
+            if i[0] == name:
+                return i[1]  # Return the value associated with the name
+        return None  # Return None if the name is not found
+
+    def main_table(self):
+        return self.table
+
 
 
 class Parser:
@@ -55,18 +67,17 @@ class Parser:
     def parse(self):
         return self.assignment()
 
-    # It starts by consuming the next token, expecting it to be a variable name.
-    # it consumes the assignment operator token.
-    #  it parses the expression on the right-hand side of the assignment.
-    # If the variable name is not found in the symbol table, it inserts a new entry with the variable name, datatype "int", and the current line number.
     def assignment(self):
         variable_name_token = self.consume("VARIABLE")
         self.consume("ASSIGN")
-        value = self.expression()
-        # -- For Table --
-        if not self.table.look_up(variable_name_token[1]):
-            self.table.insert(variable_name_token[1], "int", self.current_line)
+        expression_value = self.expression()
 
+        # For Table
+        value = expression_value if isinstance(expression_value, str) else expression_value[2]
+        datatype = "float" if "." in value else "int" if value.replace(".", "").isdigit() else "str"
+        if not self.table.lookup(variable_name_token[1]):
+            self.table.insert(variable_name_token[1], datatype, self.current_line)
+        
         return ("=", variable_name_token[1], value)
 
     def factor(self):
@@ -108,27 +119,31 @@ class Parser:
         return current_token
 
 
-src = """x = 33
-z = 44
-x = 4 
-y = 0"""
-
-table = UnorderedTable()
-
-src = src.split("\n")
+table = OrderedTable()
+file_path = 'text1.txt'
+tokens = lexer(file_path)
 
 print('Parse Tree : ')
-for line_num, line in enumerate(src, start=1):
-    tokens = tokenize(line)
-    parser = Parser(tokens, table)
+for line_num, line in enumerate(tokens, start=1):
+    parser = Parser(line, table)
     parser.current_line = line_num  # Track the line number where the variable was declared
     parse_tree = parser.parse()
     print(parse_tree)
 
 
+file_content = []
+with open(file_path, 'r') as file:
+    main_content = file.readlines()
+    for item in main_content:
+        file_content.append(item.strip())
+
 print("\nSymbol Table : ")
 print("Counter | Variable | Data Type | Line Declare | Line Repeat")
-for name, entry in table.table.items():
+for count, entry in enumerate(table.main_table(), start=1):
     line_declare = entry[2]
-    line_repeat = [i + 1 for i, line in enumerate(src) if i + 1 != line_declare and line.strip().startswith(name + " =")]
-    print(f"{entry[0]:<7} | {name:<8} | {entry[1]:<9} | {line_declare:<12} | {line_repeat}")
+    variable_name = entry[0]
+    
+    line_repeat = [i + 1 for i, line in enumerate(file_content) if i + 1 != line_declare and line.strip().startswith(variable_name + " = ")]
+    line_repeat_str = ', '.join(map(str, line_repeat)) if line_repeat else []
+    
+    print(f"{count:<7} | {variable_name:<8} | {entry[1]:<9} | {line_declare:<12} | {line_repeat_str}")

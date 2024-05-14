@@ -1,8 +1,8 @@
 import re
 
 TOKEN_TYPES = [
-    ("NUMBER", r"\d+(\.\d+)?"),  # Allowing float numbers
-    ("STRING", r'\'[^\']*\'|\"[^\"]*\"'),  # Allowing single or double quoted strings
+    ("NUMBER", r"\d+"),
+    ("STRING", r'"[^"]*"'),
     ("VARIABLE", r"[a-zA-Z_][a-zA-Z0-9_]*"),
     ("ASSIGN", r"="),
     ("PLUS", r"\+"),
@@ -15,19 +15,28 @@ TOKEN_TYPES = [
 ]
 
 
-def tokenize(src) -> list:
+TOKEN_REGEX = [(name, re.compile(pattern)) for name, pattern in TOKEN_TYPES]
+
+def lexer(file_path):
     tokens = []
-    while src:
-        for token_type, pattern in TOKEN_TYPES:
-            match = re.match(pattern, src)
-            if match:
-                token_value = match.group(0)
-                if token_type != "WHITESPACE":
-                    tokens.append((token_type, token_value))
-                src = src[match.end():]
-                break
-        else:
-            raise Exception("Invalid character: " + src[0])
+    with open(file_path, 'r') as file:
+        for line_number, line in enumerate(file, 1):
+            line_token = []
+            line = line.strip()
+            while line:
+                match = None
+                for token_name, token_regex in TOKEN_REGEX:
+                    regex_match = token_regex.match(line)
+                    if regex_match:
+                        match = (token_name, regex_match.group(0))
+                        if match[0] != "WHITESPACE":
+                            line_token.append(match)
+                            # line_token.append((match[0], match[1], f"In -> {line_number}"))
+                        line = line[regex_match.end() :]
+                        break
+                if not match:
+                    raise ValueError("Error")
+            tokens.append(line_token)
     return tokens
 
 
@@ -48,11 +57,12 @@ class OrderedTable:
         return sorted(self.table, key=lambda x: x[0])  # Sort the table alphabetically by variable name
 
 
+
 class Parser:
     def __init__(self, tokens, table):
         self.tokens = tokens
         self.current_token_index = 0
-        self.table = table
+        self.table = table # parameter refers to the symbol table where variable declarations are stored.
 
     def parse(self):
         return self.assignment()
@@ -61,10 +71,13 @@ class Parser:
         variable_name_token = self.consume("VARIABLE")
         self.consume("ASSIGN")
         expression_value = self.expression()
+
+        # For Table
         value = expression_value if isinstance(expression_value, str) else expression_value[2]
         datatype = "float" if "." in value else "int" if value.replace(".", "").isdigit() else "str"
         if not self.table.lookup(variable_name_token[1]):
             self.table.insert(variable_name_token[1], datatype, self.current_line)
+        
         return ("=", variable_name_token[1], value)
 
     def factor(self):
@@ -106,26 +119,32 @@ class Parser:
         return current_token
 
 
-textLines = """b = 4 
-c = 'mohamed'
-a = 4.2 
-b = 55"""
-
 table = OrderedTable()
-
-textLines = textLines.split("\n")
+file_path = 'text1.txt'
+tokens = lexer(file_path)
 
 print('Parse Tree : ')
-for line in textLines:
-    tokens = tokenize(line)
-    parser = Parser(tokens, table)
-    parser.current_line = textLines.index(line) + 1  # Track the line number where the variable was declared
+for line_num, line_tokens in enumerate(tokens, start=1):
+    parser = Parser(line_tokens, table)
+    parser.current_line = line_num  # Track the line number where the variable was declared
     parse_tree = parser.parse()
     print(parse_tree)
 
+
+
+file_content = []
+with open(file_path, 'r') as file:
+    main_content = file.readlines()
+    for item in main_content:
+        file_content.append(item.strip())
+
 print("\nSymbol Table : ")
 print("Counter | Variable | Data Type | Line Declare | Line Repeat")
-for idx, entry in enumerate(table.sorted_table(), start=1):
+for count, entry in enumerate(table.sorted_table(), start=1):
     line_declare = entry[2]
-    line_repeat = [i + 1 for i, line in enumerate(textLines) if i + 1 != line_declare and line.strip().startswith(entry[0] + " =")]
-    print(f"{idx:<8} | {entry[0]:<8} | {entry[1]:<9} | {line_declare:<12} | {line_repeat}")
+    variable_name = entry[0]
+    
+    line_repeat = [i + 1 for i, line in enumerate(file_content) if i + 1 != line_declare and line.strip().startswith(variable_name + " = ")]
+    line_repeat_str = ', '.join(map(str, line_repeat)) if line_repeat else []
+    
+    print(f"{count:<7} | {variable_name:<8} | {entry[1]:<9} | {line_declare:<12} | {line_repeat_str}")
